@@ -1,0 +1,13 @@
+﻿{
+  "BaseUrl": "https://reqres.in/api",
+  "ApiKey": "reqres-free-v1",
+  "NewUser": {
+      "name": "morpheus",
+      "job": "leader"
+  },
+  "UpdatedUser": {
+      "name": "morpheus",
+      "job": "zion resident"
+  },
+  "UserId": "2"
+}
