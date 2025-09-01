@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "job": { "type": "string" },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [ "name", "job", "updatedAt" ]
+}

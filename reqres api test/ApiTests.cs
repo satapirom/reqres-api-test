@@ -1,23 +1,23 @@
 ﻿using NUnit.Framework;
 using RestSharp;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Schema;
 using System.IO;
+using System.Collections.Generic;
 
 namespace ApiTests
 {
     [TestFixture]
-    public class ReqresApiTests
+    public class RegresTests
     {
         private RestClient client;
-        private string createdUserId;
-        private dynamic config; 
+        private dynamic config;
 
         [SetUp]
         public void Setup()
         {
             string json = File.ReadAllText("configData.json");
             config = JObject.Parse(json);
-
             client = new RestClient((string)config.BaseUrl);
         }
 
@@ -32,8 +32,46 @@ namespace ApiTests
             request.AddHeader("x-api-key", (string)config.ApiKey);
         }
 
+        // Helper สำหรับส่ง request และ log response
+        private JObject ExecuteRequest(string endpoint, Method method, object body = null, int expectedStatusCode = 200)
+        {
+            var request = new RestRequest(endpoint, method);
+            AddApiKey(request);
+
+            if (body != null)
+                request.AddJsonBody(body);
+
+            var response = client.Execute(request);
+
+            if ((int)response.StatusCode != expectedStatusCode)
+            {
+                Assert.Fail($"Request to {endpoint} failed. StatusCode: {response.StatusCode}, Response: {response.Content}");
+            }
+
+            if (string.IsNullOrEmpty(response.Content))
+                return new JObject();
+
+            return JObject.Parse(response.Content);
+        }
+
+        // Helper validate JSON schema
+        private void ValidateJsonSchema(JObject json, string schemaFileName)
+        {
+            string basePath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            string schemaPath = Path.Combine(basePath, "Schemas", schemaFileName);
+
+            if (!File.Exists(schemaPath))
+                Assert.Fail($"Schema file not found: {schemaPath}");
+
+            string schemaJson = File.ReadAllText(schemaPath);
+            JSchema schema = JSchema.Parse(schemaJson);
+
+            bool valid = json.IsValid(schema, out IList<string> errors);
+            Assert.That(valid, Is.True, "Response does not match schema: " + string.Join(", ", errors));
+        }
+
         [Test, Order(1)]
-        public void TC01_CreateUser()
+        public void TC_001_CreateUser()
         {
             var newUser = new
             {
@@ -41,66 +79,40 @@ namespace ApiTests
                 job = (string)config.NewUser.job
             };
 
-            var request = new RestRequest("users", Method.Post);
-            AddApiKey(request);
-            request.AddJsonBody(newUser);
-
-            var response = client.Execute(request);
-            Assert.That((int)response.StatusCode, Is.EqualTo(201));
-
-            var content = JObject.Parse(response.Content);
-            Assert.That(content["id"], Is.Not.Null);
-            Assert.That(content["createdAt"], Is.Not.Null);
-
-            createdUserId = content["id"].ToString();
+            var content = ExecuteRequest("users", Method.Post, newUser, 201);
+            ValidateJsonSchema(content, "UserCreateSchema.json");
         }
 
         [Test, Order(2)]
-        public void TC02_GetSingleUser()
+        public void TC_002_GetSingleUser()
         {
             var userId = (string)config.UserId;
-            var request = new RestRequest($"users/{userId}", Method.Get);
-            AddApiKey(request);
-
-            var response = client.Execute(request);
-            Assert.That((int)response.StatusCode, Is.EqualTo(200));
-
-            var content = JObject.Parse(response.Content);
-            Assert.That(content["data"], Is.Not.Null);
-            Assert.That((int)content["data"]["id"], Is.EqualTo(int.Parse(userId)));
+            var content = ExecuteRequest($"users/{userId}", Method.Get, null, 200);
+            ValidateJsonSchema(content, "UserGetSchema.json");
         }
 
         [Test, Order(3)]
-        public void TC03_UpdateUser()
+        public void TC_003_UpdateUser()
         {
-            var userId = createdUserId ?? (string)config.DefaultUserId;
+            var userId = (string)config.UserId;
             var updatedUser = new
             {
                 name = (string)config.UpdatedUser.name,
                 job = (string)config.UpdatedUser.job
             };
 
-            var request = new RestRequest($"users/{userId}", Method.Put);
-            AddApiKey(request);
-            request.AddJsonBody(updatedUser);
-
-            var response = client.Execute(request);
-            Assert.That((int)response.StatusCode, Is.EqualTo(200));
-
-            var content = JObject.Parse(response.Content);
-            Assert.That(content["updatedAt"], Is.Not.Null);
+            var content = ExecuteRequest($"users/{userId}", Method.Put, updatedUser, 200);
+            ValidateJsonSchema(content, "UserUpdateSchema.json");
         }
 
         [Test, Order(4)]
-        public void TC04_DeleteUser()
+        public void TC_004_DeleteUser()
         {
-            var userId = createdUserId ?? (string)config.DefaultUserId;
-            var request = new RestRequest($"users/{userId}", Method.Delete);
-            AddApiKey(request);
+            var userId = (string)config.UserId;
+            var content = ExecuteRequest($"users/{userId}", Method.Delete, null, 204);
 
-            var response = client.Execute(request);
-            Assert.That((int)response.StatusCode, Is.EqualTo(204));
-            Assert.That(response.Content, Is.Null.Or.Empty);
+            // DELETE อาจไม่มี content
+            Assert.That(content.Count, Is.EqualTo(0), "Delete response should be empty");
         }
     }
 }
